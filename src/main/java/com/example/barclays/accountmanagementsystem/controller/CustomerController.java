@@ -1,6 +1,8 @@
 package com.example.barclays.accountmanagementsystem.controller;
 
 
+import com.example.barclays.accountmanagementsystem.dto.ApiResponse;
+import com.example.barclays.accountmanagementsystem.dto.DateRangeDto;
 import com.example.barclays.accountmanagementsystem.entity.AccountTransactions;
 import com.example.barclays.accountmanagementsystem.entity.Customer;
 import com.example.barclays.accountmanagementsystem.entity.CustomerBankAccount;
@@ -28,18 +30,22 @@ public class CustomerController {
         return customerService.transactions(accountNo,customerId);
     }
 
-    @PostMapping("/cash-withdrawl/{accountNo}")
-    public boolean withdrawl(@RequestBody AccountTransactions accountTransactions, @PathVariable Integer accountNo)
+    @PostMapping("/mini-statements/{accountNo}/{customerId}")
+    public List<AccountTransactions> accountTransactionsInRange(@PathVariable int accountNo, @PathVariable int customerId, @RequestBody DateRangeDto dateRangeDto)
     {
-        customerService.cashWithDrawl(accountNo, accountTransactions);
-        return true;
+        return customerService.transactionsInRange(accountNo,customerId,dateRangeDto.getLl(),dateRangeDto.getUl());
+    }
+
+    @PostMapping("/cash-withdrawl/{accountNo}")
+    public ApiResponse withdrawl(@RequestBody AccountTransactions accountTransactions, @PathVariable Integer accountNo)
+    {
+        return customerService.cashWithDrawl(accountNo, accountTransactions);
     }
 
     @PostMapping("/cash-deposit/{accountNo}")
-    public boolean deposit(@RequestBody AccountTransactions accountTransactions,@PathVariable Integer accountNo)
+    public ApiResponse deposit(@RequestBody AccountTransactions accountTransactions,@PathVariable Integer accountNo)
     {
-        customerService.cashDeposit(accountNo,accountTransactions);
-        return true;
+        return customerService.cashDeposit(accountNo,accountTransactions);
     }
 
 

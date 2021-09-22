@@ -12,10 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.transaction.Transaction;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class CustomerService {
@@ -37,60 +34,97 @@ public class CustomerService {
 
     public List<AccountTransactions> transactions(int accountNo, Integer customerId) {
         Customer customer = customerDetails(customerId);
-        List<CustomerBankAccount> cref = customer.getAccounts();
-//          for(CustomerBankAccount element:cref){System.out.println("Details= "+element.getBalanceAmount());}
-        for (int i = 0; i < cref.size(); i++) {
-            if (cref.get(i).getAccountNo() == accountNo) {
-                System.out.println("Account Found");
-                List<AccountTransactions> transactionDetails = cref.get(i).getAccountTransactions();
-                for (AccountTransactions element : transactionDetails) {
-                    System.out.println("Type= " + element.getType());
-                }
-                return transactionDetails;
-            }
+        Boolean found = false;
+        for(CustomerBankAccount account:customer.getAccounts()){
+            found = (account.getAccountNo()==accountNo)||found;
         }
-        return null;
+        if(found)
+            return accountTransactionsRepository.fetchMiniTransactions(accountNo);
+        return new ArrayList<AccountTransactions>();
     }
 
-    public boolean cashWithDrawl(Integer accountNo, AccountTransactions accountTransactions)
+    public List<AccountTransactions> transactionsInRange(int accountNo, Integer customerId,Date ll,Date ul) {
+        Customer customer = customerDetails(customerId);
+        Boolean found = false;
+        for(CustomerBankAccount account:customer.getAccounts()){
+            found = (account.getAccountNo()==accountNo)||found;
+        }
+        if(found)
+            return accountTransactionsRepository.fetchMiniTransactionsBetweenDates(accountNo,ll,ul);
+        return new ArrayList<>();
+    }
+
+    public ApiResponse cashWithDrawl(Integer accountNo, AccountTransactions accountTransactions)
     {
         double tId=Math.random();
         tId=Math.floor(tId*1000);
         int transactionReferenceNo=(int)tId*100;
+
         accountTransactions.setTransactionReferenceNo(transactionReferenceNo);
+        accountTransactions.setDate(new Date());
+
+        if(!customerBankAccountRepository.existsById(accountNo))
+            return new ApiResponse(false,"Account not found");
         CustomerBankAccount account = customerBankAccountRepository.getById(accountNo);
+        if(account.getBalanceAmount()<accountTransactions.getAmount())
+            return new ApiResponse(false,"Balance too low");
+        if(accountTransactions.getAmount()<1)
+            return new ApiResponse(false,"Withdrawl amount must be greater than 0");
+        if(accountTransactionsRepository.fetchDailyDebitTransactionsSum(accountNo)+accountTransactions.getAmount()>10000)
+            return new ApiResponse(false,"Daily Withdrawl Limit Reached");
+
         double balanceAmount=account.getBalanceAmount()-accountTransactions.getAmount();
         account.setBalanceAmount(balanceAmount);
+        accountTransactions.setType("Debit");
         List<AccountTransactions> transactions = account.getAccountTransactions();
         transactions.add(accountTransactionsRepository.save(accountTransactions));
         account.setAccountTransactions(transactions);
         customerBankAccountRepository.save(account);
-        return true;
+        return new ApiResponse(true,"Withdrawl Succeeded");
     }
 
-    public boolean cashDeposit(Integer accountNo,AccountTransactions accountTransactions)
+    public ApiResponse cashDeposit(Integer accountNo,AccountTransactions accountTransactions)
     {
         double tId=Math.random();
         tId=Math.floor(tId*1000);
         int transactionReferenceNo=(int)tId*100;
         accountTransactions.setTransactionReferenceNo(transactionReferenceNo);
+
+        accountTransactions.setDate(new Date());
+
+        if(!customerBankAccountRepository.existsById(accountNo))
+            return new ApiResponse(false,"Account not found");
+        if(accountTransactions.getAmount()<1)
+            return new ApiResponse(false,"Deposit amount must be greater than 0");
+
         CustomerBankAccount account = customerBankAccountRepository.getById(accountNo);
         double balanceAmount=account.getBalanceAmount()+accountTransactions.getAmount();
         account.setBalanceAmount(balanceAmount);
+
+        accountTransactions.setType("Credit");
         List<AccountTransactions> transactions = account.getAccountTransactions();
         transactions.add(accountTransactionsRepository.save(accountTransactions));
         account.setAccountTransactions(transactions);
         customerBankAccountRepository.save(account);
-        return true;
+        return new ApiResponse(true,"Amount Deposited");
     }
 
-    public boolean transferAmount(Integer accountNo,AccountTransactions accountTransactions){
+    public ApiResponse transferAmount(Integer accountNo,AccountTransactions accountTransactions){
         double tId1=Math.random();
         tId1=Math.floor(tId1*1000);
         int transactionReferenceNo=(int)tId1*100;
         accountTransactions.setTransactionReferenceNo(transactionReferenceNo);
 
-        AccountTransactions accountTransactions1=new AccountTransactions();
+        if(accountTransactions.getAmount()<1)
+            return new ApiResponse(false,"Transfer amount must be greater than 0");
+        if(!customerBankAccountRepository.existsById(accountNo))
+            return new ApiResponse(false,"Sender Account not found");
+        if(!customerBankAccountRepository.existsById(accountTransactions.getToAccount()))
+            return new ApiResponse(false,"Benificiary Account not found");
+        if(accountTransactionsRepository.fetchDailyDebitTransactionsSum(accountNo)+accountTransactions.getAmount()>10000)
+            return new ApiResponse(false,"Daily Withdrawl Limit Reached");
+
+        AccountTransactions accountTransactions1 = new AccountTransactions();
         double tId2=Math.random();
         tId2=Math.floor(tId2*1000);
         int toAccountNumber=accountTransactions.getToAccount();
@@ -101,7 +135,8 @@ public class CustomerService {
         accountTransactions1.setToAccount(accountNo);
         accountTransactions1.setAmount(accountTransactions.getAmount());
         String type=accountTransactions.getType();
-        if(type=="Credit")
+
+        if(Objects.equals(type, "Credit"))
         {
             accountTransactions.setType("Debit");
             accountTransactions1.setType("Credit");
@@ -124,7 +159,7 @@ public class CustomerService {
         toAccount.setAccountTransactions(transactionsRef1);
         toAccount.setBalanceAmount(toAccount.getBalanceAmount()+accountTransactions.getAmount());
         customerBankAccountRepository.save(toAccount);
-        return true;
+        return new ApiResponse(true,"Amount Transfer Success");
     }
 
 
